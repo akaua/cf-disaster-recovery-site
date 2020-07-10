@@ -46,8 +46,6 @@ Resources:
         Enabled: true
         HttpVersion: 'http2'
         DefaultRootObject: index.html
-        # Aliases:
-        # - !Ref 'FullDomainName'
         DefaultCacheBehavior:
           AllowedMethods:
           - GET

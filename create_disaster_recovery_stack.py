@@ -2,7 +2,7 @@ import boto3
 import json
 import time
 import os
-import logger
+import mimetypes
 
 client_cloud_formation_main = boto3.client('cloudformation', region_name='us-east-1')
 
@@ -14,23 +14,17 @@ def start():
         print 'Cancelando'
         exit()
 
-def sync_to_s3(target_dir, aws_region, bucket_name):
-    if not os.path.isdir(target_dir):
-        raise ValueError('target_dir %r not found.' % target_dir)
+def upload_files(path,bucket_name):
+    session = boto3.Session(region_name='us-east-1')
+    s3 = session.resource('s3')
+    bucket = s3.Bucket(bucket_name)
 
-    s3 = boto3.resource('s3', region_name=aws_region)
-    try:
-        s3.create_bucket(Bucket=bucket_name,
-                         CreateBucketConfiguration={'LocationConstraint': aws_region})
-    except ClientError:
-        pass
-
-    for filename in os.listdir(target_dir):
-        logger.warn('Uploading %s to Amazon S3 bucket %s' % (filename, bucket_name))
-        s3.Object(bucket_name, filename).put(Body=open(os.path.join(target_dir, filename), 'rb'))
-
-        logger.info('File uploaded to https://s3.%s.amazonaws.com/%s/%s' % (
-            aws_region, bucket_name, filename))
+    for subdir, dirs, files in os.walk(path):
+        for file in files:
+            full_path = os.path.join(subdir, file)
+            file_mime = mimetypes.guess_type(file)[0] or 'binary/octet-stream'
+            with open(full_path, 'rb') as data:
+                bucket.put_object(Key=full_path[len(path)+1:], Body=data, ContentType=file_mime)
 
 def verificar_criacao_stack_main(stack_name):
     nao_finalizado = True
@@ -76,8 +70,7 @@ def deploy_web_site():
         elif export['Name'] == "WebSiteInfraStack:CloudfrontID":
             cloud_front_id = export['Value']
 
-
-    sync_to_s3('./site', aws_region='us-east-1', bucket_name=bucket_name)
+    upload_files('./site',bucket_name=bucket_name)
 
     cloud_front = boto3.client('cloudfront')
     response = cloud_front.create_invalidation(
@@ -89,11 +82,9 @@ def deploy_web_site():
                     '/*'
                     ],
                 },
-            'CallerReference': str(time()).replace(".", "")
+            'CallerReference': str(int(time.time()))
             }
         )
-
-
 
 start()
 create_stack()
